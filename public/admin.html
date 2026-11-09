@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Panel administratora</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-body">
+  <header class="topbar"><a class="brand" href="/">♡ <span>Umówmy się</span></a><a class="admin-link" href="/">Strona rezerwacji</a></header>
+  <main class="admin-wrap">
+    <section class="hero compact"><p class="eyebrow">STREFA PRYWATNA</p><h1>Panel <em>administratora.</em></h1><p class="muted">Zarządzaj profilami, spotkaniami i dostępnością.</p></section>
+    <section class="panel login-panel" id="loginPanel">
+      <h2>Logowanie</h2><form id="loginForm"><label>Hasło administratora<input id="adminPassword" type="password" required autocomplete="current-password"></label><button class="primary wide">Zaloguj się</button><p id="loginStatus" class="status"></p></form>
+    </section>
+    <div id="dashboard" class="hidden">
+      <div class="admin-actions"><button class="secondary" id="logoutBtn">Wyloguj</button></div>
+      <section class="panel">
+        <div class="section-heading"><span class="step">01</span><div><h2>Kalendarz spotkań</h2><p>Wszystkie rezerwacje i zablokowane terminy</p></div></div>
+        <div class="calendar-toolbar admin-toolbar">
+          <button class="icon-btn" id="adminPrev">‹</button><h3 id="adminMonthLabel"></h3><button class="icon-btn" id="adminNext">›</button>
+          <div class="view-switch"><button data-view="month" class="active">Miesiąc</button><button data-view="week">Tydzień</button><button data-view="day">Dzień</button></div>
+        </div>
+        <label class="filter-label">Filtr profilu <select id="profileFilter"><option value="">Wszystkie profile</option></select></label>
+        <div id="adminCalendar" class="calendar admin-calendar"></div>
+        <div id="adminEvents" class="event-list"></div>
+      </section>
+      <div class="admin-columns">
+        <section class="panel">
+          <div class="section-heading"><span class="step">02</span><div><h2>Profile</h2><p>Dodawaj osoby dostępne do wyboru</p></div></div>
+          <form id="profileForm" class="stack">
+            <label>Nazwa / imię<input id="profileName" required maxlength="100"></label>
+            <label>Opis<input id="profileDescription" maxlength="300"></label>
+            <label>Adres zdjęcia (opcjonalnie)<input id="profilePhoto" type="url" placeholder="https://…"></label>
+            <button class="primary">Dodaj profil</button><p id="profileStatus" class="status"></p>
+          </form>
+          <div id="profileList" class="manage-list"></div>
+        </section>
+        <section class="panel">
+          <div class="section-heading"><span class="step">03</span><div><h2>Blokowanie terminów</h2><p>Zablokuj cały dzień lub konkretną godzinę</p></div></div>
+          <form id="blockForm" class="stack">
+            <label>Profil<select id="blockProfile"><option value="">Wszystkie profile</option></select></label>
+            <label>Data<input id="blockDate" type="date" required></label>
+            <label>Godzina (zostaw puste, aby zablokować cały dzień)<input id="blockTime" type="time"></label>
+            <label>Powód (opcjonalnie)<input id="blockReason" maxlength="200"></label>
+            <button class="primary">Zablokuj termin</button><p id="blockStatus" class="status"></p>
+          </form>
+          <h3 class="subheading">Nadchodzące blokady</h3><div id="blockList" class="manage-list"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>

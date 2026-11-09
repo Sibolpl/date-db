@@ -1,0 +1,9 @@
+name = "date-booking"
+compatibility_date = "2026-11-09"
+pages_build_output_dir = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "date-booking-db"
+database_id = "d5c692fd-799b-4da9-9ad5-7da6f9e0543e"
+migrations_dir = "migrations"

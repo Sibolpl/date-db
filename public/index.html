@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f7f5f2">
+  <title>Umówmy się ❤️</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">♡ <span>Umówmy się</span></a>
+    <a class="admin-link" href="/admin">Panel administratora</a>
+  </header>
+  <main class="wrap">
+    <section class="hero">
+      <p class="eyebrow">DOBRY POMYSŁ ZACZYNA SIĘ OD SPOTKANIA</p>
+      <h1>Zaplanujmy coś <em>miłego.</em></h1>
+      <p class="muted">Wybierz osobę, termin i pomysł na nasze spotkanie.</p>
+    </section>
+
+    <section class="panel booking-panel" id="bookingPanel">
+      <div class="section-heading"><span class="step">01</span><div><h2>Z kim się widzimy?</h2><p>Wybierz profil</p></div></div>
+      <div id="profiles" class="profile-grid"><p class="muted">Ładowanie profili…</p></div>
+
+      <div class="section-heading"><span class="step">02</span><div><h2>Wybierz termin</h2><p>Dostępne dni i godziny</p></div></div>
+      <div class="calendar-toolbar">
+        <button class="icon-btn" id="prevMonth" aria-label="Poprzedni miesiąc">‹</button>
+        <h3 id="monthLabel"></h3>
+        <button class="icon-btn" id="nextMonth" aria-label="Następny miesiąc">›</button>
+      </div>
+      <div class="calendar" id="publicCalendar"></div>
+      <div class="legend"><span><i class="dot available"></i>Dostępny dzień</span><span><i class="dot busy"></i>Brak wolnych terminów</span><span><i class="dot selected"></i>Wybrany</span></div>
+      <div id="timePanel" class="time-panel hidden">
+        <h3 id="selectedDateLabel">Wybierz godzinę</h3>
+        <div id="timeSlots" class="time-slots"></div>
+      </div>
+
+      <div class="section-heading"><span class="step">03</span><div><h2>Szczegóły spotkania</h2><p>Powiedz nam coś więcej</p></div></div>
+      <form id="bookingForm">
+        <label>Jak masz na imię? <input id="guestName" maxlength="100" required placeholder="Twoje imię"></label>
+        <div class="form-grid">
+          <label>Gdzie chcemy iść? <input id="place" maxlength="500" placeholder="Np. restauracja, spacer…"></label>
+          <label>Jak się ubieramy? <input id="outfit" maxlength="500" placeholder="Np. elegancko, na luzie…"></label>
+          <label>Co chcemy jeść? <input id="food" maxlength="500" placeholder="Na co masz ochotę?"></label>
+          <label class="full">Dodatkowa wiadomość <textarea id="message" maxlength="1500" rows="3" placeholder="Coś jeszcze?"></textarea></label>
+        </div>
+        <button class="primary wide" id="submitBooking" type="submit">Potwierdzam spotkanie ♥</button>
+        <p id="bookingStatus" class="status" role="status"></p>
+      </form>
+    </section>
+    <footer>Stworzone z myślą o miłych chwilach ♡</footer>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
