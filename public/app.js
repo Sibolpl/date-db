@@ -63,15 +63,31 @@ function renderTimes(){
   $("timePanel").classList.remove("hidden");
   $("selectedDateLabel").textContent=new Date(`${state.selectedDate}T12:00:00`).toLocaleDateString("pl-PL",{weekday:"long",day:"numeric",month:"long"});
   const slots=$("timeSlots");slots.innerHTML="";
+  let visible=0;
   for(let i=0;i<96;i++){
     const hour=Math.floor(i/4), time=`${pad(hour)}:${pad((i%4)*15)}`;
-    const btn=document.createElement("button");btn.type="button";btn.className="time-slot"+(state.selectedTime===time?" selected":"");btn.textContent=time;
+    // Pokazujemy wyłącznie godziny z grafiku, które nie są zablokowane.
+    if(!isScheduled(state.selectedDate,time))continue;
+    if(state.availability.blocked.some(x=>x.date===state.selectedDate&&(!x.time||x.time===time)))continue;
     const past=state.selectedDate===dateKey(new Date())&&time<=`${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
-    btn.disabled=!isScheduled(state.selectedDate,time)||isBusy(state.selectedDate,time)||past;
+    if(past)continue;
+    const booked=state.availability.booked.some(x=>x.date===state.selectedDate&&x.time===time);
+    const btn=document.createElement("button");btn.type="button";
+    btn.className="time-slot"+(state.selectedTime===time?" selected":"");
+    btn.textContent=time;
+    // Przekreślenie dotyczy tylko godzin zajętych przez rezerwację.
+    btn.disabled=booked;
     btn.onclick=()=>{state.selectedTime=time;renderTimes();};
     slots.append(btn);
+    visible++;
+  }
+  if(!visible){
+    const msg=document.createElement("p");msg.className="muted";
+    msg.textContent="Brak dostępnych godzin w tym dniu.";
+    slots.append(msg);
   }
 }
+
 $("prevMonth").onclick=()=>{state.month.setMonth(state.month.getMonth()-1);state.selectedDate="";state.selectedTime="";loadAvailability();};
 $("nextMonth").onclick=()=>{state.month.setMonth(state.month.getMonth()+1);state.selectedDate="";state.selectedTime="";loadAvailability();};
 $("bookingForm").addEventListener("submit",async e=>{
