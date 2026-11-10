@@ -18,8 +18,14 @@ async function loadProfiles(){
   $("scheduleProfile").innerHTML=state.profiles.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
   if(state.profiles.some(p=>p.id===previousScheduleProfile)) $("scheduleProfile").value=previousScheduleProfile;
   await loadSchedule();
-  $("profileList").innerHTML=state.profiles.map(p=>`<div class="manage-item"><div><strong>${esc(p.name)}</strong><small>${p.active?"Aktywny":"Nieaktywny"} · ${esc(p.description)}</small></div><button class="secondary" data-toggle="${p.id}" data-active="${p.active}">${p.active?"Dezaktywuj":"Aktywuj"}</button></div>`).join("")||'<p class="muted">Brak profili.</p>';
+  $("profileList").innerHTML=state.profiles.map(p=>`<div class="manage-item"><div><strong>${esc(p.name)}</strong><small>${p.active?"Aktywny":"Nieaktywny"} · ${esc(p.description)}</small></div><button class="secondary" data-toggle="${p.id}" data-active="${p.active}">${p.active?"Dezaktywuj":"Aktywuj"}</button><button class="danger" data-delete="${p.id}">Usuń profil</button></div>`).join("")||'<p class="muted">Brak profili.</p>';
   $("profileList").querySelectorAll("[data-toggle]").forEach(b=>b.onclick=async()=>{const p=state.profiles.find(x=>x.id===b.dataset.toggle);await api(`admin/profiles/${p.id}`,{method:"PATCH",body:JSON.stringify({...p,active:!p.active})});refreshAll();});
+  $("profileList").querySelectorAll("[data-delete]").forEach(b=>b.onclick=async()=>{
+    const p=state.profiles.find(x=>x.id===b.dataset.delete);
+    if(!confirm(`Usunąć profil „${p.name}”? Zniknie z list i rezerwacji. Historia spotkań zostanie zachowana.`))return;
+    try{await api(`admin/profiles/${p.id}`,{method:"DELETE"});$("profileStatus").textContent="Profil usunięty.";await refreshAll();}
+    catch(e){$("profileStatus").textContent=e.message;}
+  });
 }
 function range(){
   if(state.view==="day")return [key(state.date),key(state.date)];

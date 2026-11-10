@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { profiles: [], profileId: "", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selectedDate: "", selectedTime: "", availability: {booked:[],blocked:[],schedule:[]} };
+const state = { profiles: [], profileIds: [], month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selectedDate: "", selectedTime: "", availability: {} };
 const pad = n => String(n).padStart(2,"0");
 const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const monthKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
@@ -14,27 +14,35 @@ function renderProfiles(){
   $("profiles").innerHTML = "";
   if(!state.profiles.length){$("profiles").innerHTML='<p class="muted">Nie ma jeszcze aktywnych profili. Spróbuj ponownie później.</p>';return;}
   state.profiles.forEach(p=>{
-    const el=document.createElement("button");el.type="button";el.className="profile-card"+(state.profileId===p.id?" selected":"");
+    const el=document.createElement("button");el.type="button";el.className="profile-card"+(state.profileIds.includes(p.id)?" selected":"");
     el.innerHTML=`${p.photo_url?`<img src="${escapeHtml(p.photo_url)}" alt="">`:""}<strong>${escapeHtml(p.name)}</strong><small>${escapeHtml(p.description||"Wybierz tę osobę")}</small>`;
-    el.onclick=()=>{state.profileId=p.id;state.selectedDate="";state.selectedTime="";renderProfiles();loadAvailability();};
+    el.setAttribute("aria-pressed",String(state.profileIds.includes(p.id)));
+    el.onclick=()=>{state.profileIds=state.profileIds.includes(p.id)?state.profileIds.filter(x=>x!==p.id):[...state.profileIds,p.id];state.selectedDate="";state.selectedTime="";renderProfiles();loadAvailability();};
     $("profiles").append(el);
   });
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function isScheduled(date,time){
   const weekday=(new Date(`${date}T12:00:00Z`).getUTCDay()+6)%7;
-  return (state.availability.schedule||[]).some(s=>Number(s.weekday)===weekday && s.start_time<=time && time<s.end_time);
+  return state.profileIds.length>0 && state.profileIds.every(pid=>(state.availability[pid]?.schedule||[]).some(s=>Number(s.weekday)===weekday && s.start_time<=time && time<s.end_time));
 }
 function isBusy(date,time=null){
-  const booked=state.availability.booked.some(x=>x.date===date&&(!time||x.time===time));
-  const blocked=state.availability.blocked.some(x=>x.date===date&&(!x.time||!time||x.time===time));
+  const booked=state.profileIds.some(pid=>(state.availability[pid]?.booked||[]).some(x=>x.date===date&&(!time||x.time===time)));
+  const blocked=state.profileIds.some(pid=>(state.availability[pid]?.blocked||[]).some(x=>x.date===date&&(!x.time||!time||x.time===time)));
   return booked||blocked;
 }
+let availabilityRequest=0;
 async function loadAvailability(){
+  const requestId=++availabilityRequest;
   $("monthLabel").textContent=monthName(state.month);
-  if(!state.profileId){renderCalendar();return;}
-  try{state.availability=await api(`availability?profileId=${encodeURIComponent(state.profileId)}&month=${monthKey(state.month)}`);}
-  catch(e){$("bookingStatus").textContent=e.message;}
+  if(!state.profileIds.length){state.availability={};renderCalendar();$("timePanel").classList.add("hidden");return;}
+  try{
+    const ids=[...state.profileIds];
+    const values=await Promise.all(ids.map(pid=>api(`availability?profileId=${encodeURIComponent(pid)}&month=${monthKey(state.month)}`)));
+    if(requestId!==availabilityRequest)return;
+    state.availability=Object.fromEntries(ids.map((pid,i)=>[pid,values[i]]));
+  }
+  catch(e){if(requestId!==availabilityRequest)return;$("bookingStatus").textContent=e.message;state.availability={};}
   renderCalendar();
   if(state.selectedDate) renderTimes();
 }
@@ -54,7 +62,7 @@ function renderCalendar(){
     if(key===dateKey(new Date()))b.classList.add("today");
     if(key===state.selectedDate)b.classList.add("selected");
     if(fullyBusy)b.classList.add("busy");else b.classList.add("available");
-    b.disabled=!state.profileId||past||fullyBusy;
+    b.disabled=!state.profileIds.length||past||fullyBusy;
     b.onclick=()=>{state.selectedDate=key;state.selectedTime="";renderCalendar();renderTimes();};
     cal.append(b);
   }
@@ -68,10 +76,10 @@ function renderTimes(){
     const hour=Math.floor(i/4), time=`${pad(hour)}:${pad((i%4)*15)}`;
     // Pokazujemy wyłącznie godziny z grafiku, które nie są zablokowane.
     if(!isScheduled(state.selectedDate,time))continue;
-    if(state.availability.blocked.some(x=>x.date===state.selectedDate&&(!x.time||x.time===time)))continue;
+    if(state.profileIds.some(pid=>(state.availability[pid]?.blocked||[]).some(x=>x.date===state.selectedDate&&(!x.time||x.time===time))))continue;
     const past=state.selectedDate===dateKey(new Date())&&time<=`${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
     if(past)continue;
-    const booked=state.availability.booked.some(x=>x.date===state.selectedDate&&x.time===time);
+    const booked=state.profileIds.some(pid=>(state.availability[pid]?.booked||[]).some(x=>x.date===state.selectedDate&&x.time===time));
     const btn=document.createElement("button");btn.type="button";
     btn.className="time-slot"+(state.selectedTime===time?" selected":"");
     btn.textContent=time;
@@ -92,12 +100,12 @@ $("prevMonth").onclick=()=>{state.month.setMonth(state.month.getMonth()-1);state
 $("nextMonth").onclick=()=>{state.month.setMonth(state.month.getMonth()+1);state.selectedDate="";state.selectedTime="";loadAvailability();};
 $("bookingForm").addEventListener("submit",async e=>{
   e.preventDefault();$("bookingStatus").textContent="";
-  if(!state.profileId)return $("bookingStatus").textContent="Najpierw wybierz osobę.";
+  if(!state.profileIds.length)return $("bookingStatus").textContent="Najpierw wybierz co najmniej jedną osobę.";
   if(!state.selectedDate||!state.selectedTime)return $("bookingStatus").textContent="Wybierz dzień i godzinę w kalendarzu.";
   const btn=$("submitBooking");btn.disabled=true;btn.textContent="Wysyłanie…";
   try{
     await api("bookings",{method:"POST",body:JSON.stringify({
-      profileId:state.profileId,guestName:$("guestName").value,date:state.selectedDate,time:state.selectedTime,
+      profileIds:state.profileIds,guestName:$("guestName").value,date:state.selectedDate,time:state.selectedTime,
       place:$("place").value,outfit:$("outfit").value,food:$("food").value,message:$("message").value
     })});
     $("bookingPanel").innerHTML='<div class="success-screen"><p class="eyebrow">REZERWACJA ZAPISANA</p><h1>Dziękujemy! <em>♥</em></h1><p class="muted">Spotkanie zostało zapisane. Do zobaczenia!</p></div>';
