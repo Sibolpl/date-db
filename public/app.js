@@ -105,7 +105,7 @@ $("bookingForm").addEventListener("submit",async e=>{
   const btn=$("submitBooking");btn.disabled=true;btn.textContent="Wysyłanie…";
   try{
     await api("bookings",{method:"POST",body:JSON.stringify({
-      profileIds:state.profileIds,guestName:$("guestName").value,date:state.selectedDate,time:state.selectedTime,
+      profileIds:state.profileIds,date:state.selectedDate,time:state.selectedTime,
       place:$("place").value,outfit:$("outfit").value,food:$("food").value,message:$("message").value
     })});
     $("bookingPanel").innerHTML='<div class="success-screen"><p class="eyebrow">REZERWACJA ZAPISANA</p><h1>Dziękujemy! <em>♥</em></h1><p class="muted">Spotkanie zostało zapisane. Do zobaczenia!</p></div>';

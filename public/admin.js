@@ -58,7 +58,7 @@ function renderDay(cal,date){
   cal.style.gridTemplateColumns="1fr";
   cal.innerHTML=`<div class="event-list">${items.map(eventHTML).join("")||'<p class="muted">Brak spotkań tego dnia.</p>'}${blocks.map(blockHTML).join("")}</div>`;
 }
-function eventHTML(b){return `<div class="event-item"><div><strong>${esc(b.time)} · ${esc(b.guest_name)}</strong><small>${esc(b.profile_name)} · ${esc(b.place||"Bez podanego miejsca")} · ${esc(b.food||"")}</small><small>Ubiór: ${esc(b.outfit||"—")} · ${esc(b.message||"")}</small></div>${b.status==="confirmed"?`<button class="danger" data-cancel="${b.id}">Anuluj</button>`:'<span class="muted">Anulowano</span>'}</div>`;}
+function eventHTML(b){return `<div class="event-item"><div><strong>${esc(b.time)} · </strong><small>${esc(b.profile_name)} · ${esc(b.place||"Bez podanego miejsca")} · ${esc(b.food||"")}</small><small>Ubiór: ${esc(b.outfit||"—")} · ${esc(b.message||"")}</small></div>${b.status==="confirmed"?`<button class="danger" data-cancel="${b.id}">Anuluj</button>`:'<span class="muted">Anulowano</span>'}</div>`;}
 function blockHTML(b){return `<div class="event-item"><div><strong>▣ Blokada · ${esc(b.time||"Cały dzień")}</strong><small>${esc(b.profile_name||"Wszystkie profile")} · ${esc(b.reason||"")}</small></div><button class="danger" data-unblock="${b.id}">Usuń blokadę</button></div>`;}
 function renderEvents(){
   $("adminEvents").innerHTML=[...state.bookings.map(b=>({...b,_type:"booking"})),...state.blocks.map(b=>({...b,_type:"block"}))].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).map(x=>x._type==="booking"?eventHTML(x):blockHTML(x)).join("")||'<p class="muted">Brak spotkań i blokad w tym zakresie.</p>';
