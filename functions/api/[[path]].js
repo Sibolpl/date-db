@@ -131,11 +131,11 @@ export async function onRequest({ request, env }) {
     // Backwards-compatible: accept a single profileId or multiple profileIds.
     const rawIds = Array.isArray(data.profileIds) ? data.profileIds : [data.profileId];
     const profileIds = [...new Set(rawIds.map(x => clean(x, 80)).filter(Boolean))];
-    const guestName = clean(data.guestName, 100);
+    const guestName = "";
     const date = clean(data.date, 10);
     const time = clean(data.time, 5);
-    if (!profileIds.length || profileIds.length > 20 || !guestName || !validDate(date) || !validQuarter(time)) {
-      return json({ error: "Wybierz od 1 do 20 osób, podaj imię, datę i godzinę." }, 400);
+    if (!profileIds.length || profileIds.length > 20 || !validDate(date) || !validQuarter(time)) {
+      return json({ error: "Wybierz od 1 do 20 osób, datę i godzinę." }, 400);
     }
     if (date < new Date().toISOString().slice(0,10)) return json({ error: "Nie można rezerwować dat z przeszłości." }, 400);
     const profiles = [];
@@ -160,7 +160,7 @@ export async function onRequest({ request, env }) {
     }
 
     await discord(env, "❤️ Nowa rezerwacja spotkania", [
-      ["Osoby", profiles.map(p=>p.name).join(", ")], ["Imię rezerwującego", guestName],
+      ["Osoby", profiles.map(p=>p.name).join(", ")],
       ["Data", date], ["Godzina", time], ["Gdzie chcemy iść", data.place],
       ["Jak się ubieramy", data.outfit], ["Co chcemy jeść", data.food],
       ["Wiadomość", data.message]
@@ -224,7 +224,7 @@ export async function onRequest({ request, env }) {
       if(!booking)return json({error:"Nie znaleziono rezerwacji."},404);
       if(!(await allowed(env,user.id,booking.profile_id,"can_cancel")))return json({error:"Brak uprawnienia do anulowania."},403);
       await env.DB.prepare("UPDATE bookings SET status='cancelled' WHERE id=? AND status='confirmed'").bind(cancel[1]).run();
-      await discord(env,"❌ Anulowanie spotkania",[["Osoba",booking.profile_name],["Rezerwujący",booking.guest_name],["Data",booking.date],["Godzina",booking.time]]);
+      await discord(env,"❌ Anulowanie spotkania",[["Osoba",booking.profile_name],["Data",booking.date],["Godzina",booking.time]]);
       return json({success:true});
     }
     return json({error:"Nie znaleziono endpointu."},404);
@@ -388,7 +388,7 @@ export async function onRequest({ request, env }) {
       if (!booking) return json({ error: "Nie znaleziono rezerwacji." }, 404);
       await env.DB.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?").bind(cancelMatch[1]).run();
       await discord(env, "❌ Anulowanie spotkania", [
-        ["Osoba", booking.profile_name], ["Rezerwujący", booking.guest_name],
+        ["Osoba", booking.profile_name], 
         ["Data", booking.date], ["Godzina", booking.time]
       ]);
       return json({ success: true });
