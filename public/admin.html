@@ -31,7 +31,18 @@
         <div id="scheduleDays" class="schedule-days"></div>
         <button id="saveSchedule" class="primary" type="button">Zapisz grafik osoby</button>
         <p id="scheduleStatus" class="status" role="status"></p>
-        <p class="muted">Godziny rezerwacji na stronie: od 09:00 do 19:30, co 30 minut. Przedziały nie mogą się nakładać. Puste dni oznaczają brak dostępności. Ustawienie grafiku nie anuluje już zapisanych spotkań.</p>
+        <p class="muted">Godziny rezerwacji na stronie: od 00:00 do 23:45, co 15 minut (23:59 może być końcem grafiku). Przedziały nie mogą się nakładać. Puste dni oznaczają brak dostępności. Ustawienie grafiku nie anuluje już zapisanych spotkań.</p>
+      </section>
+      <section class="panel">
+        <div class="section-heading"><span class="step">05</span><div><h2>Konta właścicieli i uprawnienia</h2><p>Utwórz konto, przypisz kalendarze i nadaj osobne prawa.</p></div></div>
+        <form id="userForm" class="stack">
+          <label>Login (małe litery, bez spacji)<input id="userLogin" required minlength="3" maxlength="80" autocomplete="off"></label>
+          <label>Nazwa wyświetlana<input id="userDisplay" required maxlength="100"></label>
+          <label>Hasło (minimum 12 znaków)<input id="userPassword" type="password" required minlength="12" autocomplete="new-password"></label>
+          <button class="primary">Utwórz konto</button><p id="userStatus" class="status" role="status"></p>
+        </form>
+        <p class="muted">Właściciele logują się pod adresem <a href="/owner">/owner</a>. Nie udostępniaj haseł publicznie.</p>
+        <div id="userList" class="manage-list"></div>
       </section>
       <div class="admin-columns">
         <section class="panel">

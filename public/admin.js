@@ -9,7 +9,7 @@ function showDashboard(){ $("loginPanel").classList.add("hidden");$("dashboard")
 async function checkSession(){try{await api("admin/session");showDashboard();}catch{$("loginPanel").classList.remove("hidden");}}
 $("loginForm").onsubmit=async e=>{e.preventDefault();$("loginStatus").textContent="";try{await api("admin/login",{method:"POST",body:JSON.stringify({password:$("adminPassword").value})});showDashboard();}catch(err){$("loginStatus").textContent=err.message;}};
 $("logoutBtn").onclick=async()=>{await api("admin/logout",{method:"POST"});location.reload();};
-async function refreshAll(){await Promise.all([loadProfiles(),loadCalendar()]);}
+async function refreshAll(){await Promise.all([loadProfiles(),loadCalendar()]);await loadUsers();}
 async function loadProfiles(){
   state.profiles=await api("admin/profiles");
   $("profileFilter").innerHTML='<option value="">Wszystkie profile</option>'+state.profiles.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
@@ -102,3 +102,37 @@ $("saveSchedule").onclick=async()=>{
 
 $("blockDate").value=key(new Date());
 checkSession().catch(e=>{$("loginStatus").textContent=e.message;});
+
+// Administrator: accounts and per-profile permissions.
+async function loadUsers(){
+  try {
+    const data=await api("admin/users"), profiles=state.profiles;
+    $("userList").innerHTML=data.users.map(u=>{
+      const rows=profiles.map(p=>{
+        const perm=data.permissions.find(x=>x.user_id===u.id&&x.profile_id===p.id)||{};
+        return `<div class="manage-item" style="flex-wrap:wrap;gap:10px"><strong>${esc(p.name)}</strong><label><input type="checkbox" data-perm="view" data-user="${u.id}" data-profile="${p.id}" ${perm.can_view?"checked":""}> Podgląd</label><label><input type="checkbox" data-perm="cancel" data-user="${u.id}" data-profile="${p.id}" ${perm.can_cancel?"checked":""}> Anulowanie</label><label><input type="checkbox" data-perm="block" data-user="${u.id}" data-profile="${p.id}" ${perm.can_block?"checked":""}> Blokady</label><button class="secondary" data-saveperm="${u.id}" data-profile="${p.id}">Zapisz prawa</button></div>`;
+      }).join("");
+      return `<div class="panel" style="margin:12px 0;padding:18px"><h3>${esc(u.display_name)} <small>(${esc(u.username)})</small></h3><p class="muted">${u.active?"Aktywne konto":"Konto wyłączone"}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" data-toggleuser="${u.id}" data-active="${u.active}">${u.active?"Wyłącz konto":"Włącz konto"}</button><button class="secondary" data-resetuser="${u.id}">Zmień hasło</button></div><h4>Uprawnienia do kalendarzy</h4>${rows||"Najpierw dodaj profil."}</div>`;
+    }).join("")||'<p class="muted">Nie utworzono jeszcze kont.</p>';
+    $("userList").querySelectorAll("[data-saveperm]").forEach(b=>b.onclick=async()=>{
+      const uid=b.dataset.saveperm,pid=b.dataset.profile;
+      const checked=name=>!!$("userList").querySelector(`[data-perm="${name}"][data-user="${uid}"][data-profile="${pid}"]`).checked;
+      try{await api(`admin/users/${uid}/permissions`,{method:"PUT",body:JSON.stringify({profileId:pid,can_view:checked("view"),can_cancel:checked("cancel"),can_block:checked("block")})});$("userStatus").textContent="Uprawnienia zapisane.";await loadUsers();}
+      catch(e){$("userStatus").textContent=e.message;}
+    });
+    $("userList").querySelectorAll("[data-toggleuser]").forEach(b=>b.onclick=async()=>{
+      if(!confirm("Zmienić stan konta?"))return;
+      try{await api(`admin/users/${b.dataset.toggleuser}`,{method:"PATCH",body:JSON.stringify({active:!Number(b.dataset.active)})});await loadUsers();}catch(e){$("userStatus").textContent=e.message;}
+    });
+    $("userList").querySelectorAll("[data-resetuser]").forEach(b=>b.onclick=async()=>{
+      const password=prompt("Wpisz nowe hasło (minimum 12 znaków). Nie podawaj go nikomu poza właścicielem konta.");
+      if(password===null)return;
+      try{await api(`admin/users/${b.dataset.resetuser}`,{method:"PATCH",body:JSON.stringify({password})});$("userStatus").textContent="Hasło zmienione; poprzednie sesje wylogowane.";}catch(e){$("userStatus").textContent=e.message;}
+    });
+  }catch(e){$("userStatus").textContent=e.message;}
+}
+$("userForm").onsubmit=async e=>{
+  e.preventDefault();
+  try{await api("admin/users",{method:"POST",body:JSON.stringify({username:$("userLogin").value,display_name:$("userDisplay").value,password:$("userPassword").value})});e.target.reset();$("userStatus").textContent="Konto utworzone. Nadaj mu teraz uprawnienia poniżej.";await loadUsers();}
+  catch(err){$("userStatus").textContent=err.message;}
+};

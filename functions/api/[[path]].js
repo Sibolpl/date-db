@@ -37,6 +37,41 @@ async function isAdmin(request, env) {
 const cookieHeader = (value, maxAge) =>
   `date_admin=${encodeURIComponent(value)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
 
+// Owner accounts: PBKDF2 password hashes and signed, revocable, short-lived sessions.
+const enc = new TextEncoder();
+const b64 = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+async function hashPassword(password, salt) {
+  const material = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({name:"PBKDF2", salt:enc.encode(salt), iterations:210000, hash:"SHA-256"}, material, 256);
+  return b64(bits);
+}
+function sameOrigin(request) {
+  const origin = request.headers.get("Origin");
+  return !origin || origin === new URL(request.url).origin;
+}
+const ownerCookie = (value, age) => `date_owner=${encodeURIComponent(value)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${age}`;
+async function ownerSession(request, env) {
+  if (!env.ADMIN_PASSWORD) return null;
+  const m=(request.headers.get("Cookie")||"").match(/(?:^|;\s*)date_owner=([^;]+)/);
+  if(!m)return null;
+  try {
+    const [uid, version, expires, sig] = decodeURIComponent(m[1]).split(".");
+    if(!uid || !/^\d+$/.test(version) || !/^\d+$/.test(expires) || Number(expires)<Date.now())return null;
+    const value=`${uid}.${version}.${expires}`;
+    if((await sign(value,env.ADMIN_PASSWORD))!==sig)return null;
+    const user=await env.DB.prepare("SELECT id, username, display_name, active, session_version FROM owner_users WHERE id=?").bind(uid).first();
+    return user && user.active && String(user.session_version)===version ? user : null;
+  }catch{return null;}
+}
+async function permissions(env, userId) {
+  const {results}=await env.DB.prepare("SELECT profile_id, can_view, can_cancel, can_block FROM owner_permissions WHERE user_id=?").bind(userId).all();
+  return results||[];
+}
+async function allowed(env, userId, profileId, permission) {
+  const row=await env.DB.prepare(`SELECT ${permission} AS allowed FROM owner_permissions WHERE user_id=? AND profile_id=?`).bind(userId,profileId).first();
+  return !!row?.allowed;
+}
+
 async function discord(env, title, fields) {
   if (!env.DISCORD_WEBHOOK) return;
   try {
@@ -65,6 +100,7 @@ export async function onRequest({ request, env }) {
   const method = request.method;
 
   if (!env.DB) return json({ error: "Brak podłączenia bazy D1." }, 500);
+  if (method !== "GET" && !sameOrigin(request)) return json({error:"Nieprawidłowe pochodzenie żądania."},403);
 
   if (path === "profiles" && method === "GET") {
     const { results } = await env.DB.prepare(
@@ -130,6 +166,68 @@ export async function onRequest({ request, env }) {
     return json({ success: true, id: bookingId });
   }
 
+  if (path === "owner/login" && method === "POST") {
+    const data=await readBody(request), username=clean(data.username,80).toLowerCase(), password=String(data.password||"");
+    if(!username || password.length>300)return json({error:"Nieprawidłowy login lub hasło."},401);
+    const user=await env.DB.prepare("SELECT * FROM owner_users WHERE username=? AND active=1").bind(username).first();
+    // Also perform an expensive hash for missing users to reduce username enumeration.
+    const salt=user?.password_salt||"missing-account-salt";
+    const candidate=await hashPassword(password,salt);
+    if(!user || candidate!==user.password_hash)return json({error:"Nieprawidłowy login lub hasło."},401);
+    const expires=String(Date.now()+8*60*60*1000);
+    const value=`${user.id}.${user.session_version}.${expires}`;
+    return json({success:true},200,{"Set-Cookie":ownerCookie(`${value}.${await sign(value,env.ADMIN_PASSWORD)}`,8*60*60)});
+  }
+  if(path==="owner/logout" && method==="POST")return json({success:true},200,{"Set-Cookie":ownerCookie("",0)});
+  if(path.startsWith("owner/")) {
+    const user=await ownerSession(request,env);
+    if(!user)return json({error:"Zaloguj się ponownie."},401);
+    const route=path.slice(6);
+    if(route==="session" && method==="GET") {
+      return json({user:{username:user.username,display_name:user.display_name},permissions:await permissions(env,user.id)});
+    }
+    if(route==="profiles" && method==="GET") {
+      const {results}=await env.DB.prepare("SELECT p.id,p.name,op.can_view,op.can_cancel,op.can_block FROM owner_permissions op JOIN profiles p ON p.id=op.profile_id WHERE op.user_id=? AND op.can_view=1 ORDER BY p.name").bind(user.id).all();
+      return json(results||[]);
+    }
+    if(route==="calendar" && method==="GET") {
+      const from=clean(url.searchParams.get("from"),10), to=clean(url.searchParams.get("to"),10), profileId=clean(url.searchParams.get("profileId"),80);
+      if(!validDate(from)||!validDate(to)||from>to||Date.parse(to)-Date.parse(from)>1000*60*60*24*62)return json({error:"Nieprawidłowy zakres dat (maksymalnie 62 dni)."},400);
+      if(profileId && !(await allowed(env,user.id,profileId,"can_view")))return json({error:"Brak dostępu do kalendarza."},403);
+      const extra=profileId?" AND b.profile_id=?":"";
+      const bookings=await env.DB.prepare(`SELECT b.*,p.name AS profile_name FROM bookings b JOIN profiles p ON p.id=b.profile_id JOIN owner_permissions op ON op.profile_id=b.profile_id AND op.user_id=? AND op.can_view=1 WHERE b.date>=? AND b.date<=?${extra} ORDER BY b.date,b.time`).bind(user.id,from,to,...(profileId?[profileId]:[])).all();
+      const blockSql=`SELECT bs.*,p.name AS profile_name FROM blocked_slots bs LEFT JOIN profiles p ON p.id=bs.profile_id WHERE bs.date>=? AND bs.date<=? AND (bs.profile_id IS NULL OR bs.profile_id IN (SELECT profile_id FROM owner_permissions WHERE user_id=? AND can_view=1)) ${profileId?"AND (bs.profile_id=? OR bs.profile_id IS NULL)":""} ORDER BY bs.date,bs.time`;
+      const blocks=await env.DB.prepare(blockSql).bind(from,to,user.id,...(profileId?[profileId]:[])).all();
+      return json({bookings:bookings.results||[],blocks:blocks.results||[]});
+    }
+    if(route==="blocks" && method==="POST") {
+      const d=await readBody(request), profileId=clean(d.profileId,80), date=clean(d.date,10), time=clean(d.time,5);
+      if(!profileId || !validDate(date) || (time&&!validTime(time)))return json({error:"Wybierz profil, datę i poprawną godzinę."},400);
+      if(!(await allowed(env,user.id,profileId,"can_block")))return json({error:"Brak uprawnienia do blokowania."},403);
+      const blockId=id();
+      await env.DB.prepare("INSERT INTO blocked_slots (id,profile_id,date,time,reason) VALUES (?,?,?,?,?)").bind(blockId,profileId,date,time||null,clean(d.reason,200)).run();
+      return json({success:true,id:blockId});
+    }
+    const blockMatch=route.match(/^blocks\/([^/]+)$/);
+    if(blockMatch && method==="DELETE") {
+      const block=await env.DB.prepare("SELECT profile_id FROM blocked_slots WHERE id=?").bind(blockMatch[1]).first();
+      if(!block)return json({error:"Nie znaleziono blokady."},404);
+      if(!block.profile_id || !(await allowed(env,user.id,block.profile_id,"can_block")))return json({error:"Brak uprawnienia do usunięcia blokady."},403);
+      await env.DB.prepare("DELETE FROM blocked_slots WHERE id=?").bind(blockMatch[1]).run();
+      return json({success:true});
+    }
+    const cancel=route.match(/^bookings\/([^/]+)\/cancel$/);
+    if(cancel && method==="POST") {
+      const booking=await env.DB.prepare("SELECT b.*,p.name AS profile_name FROM bookings b JOIN profiles p ON p.id=b.profile_id WHERE b.id=?").bind(cancel[1]).first();
+      if(!booking)return json({error:"Nie znaleziono rezerwacji."},404);
+      if(!(await allowed(env,user.id,booking.profile_id,"can_cancel")))return json({error:"Brak uprawnienia do anulowania."},403);
+      await env.DB.prepare("UPDATE bookings SET status='cancelled' WHERE id=? AND status='confirmed'").bind(cancel[1]).run();
+      await discord(env,"❌ Anulowanie spotkania",[["Osoba",booking.profile_name],["Rezerwujący",booking.guest_name],["Data",booking.date],["Godzina",booking.time]]);
+      return json({success:true});
+    }
+    return json({error:"Nie znaleziono endpointu."},404);
+  }
+
   if (path === "admin/login" && method === "POST") {
     const data = await readBody(request);
     if (!env.ADMIN_PASSWORD || clean(data.password, 200) !== env.ADMIN_PASSWORD) {
@@ -149,6 +247,36 @@ export async function onRequest({ request, env }) {
     const route = path.slice(6);
 
     if (route === "session" && method === "GET") return json({ authenticated: true });
+
+    if(route==="users" && method==="GET") {
+      const {results}=await env.DB.prepare("SELECT id,username,display_name,active,created_at FROM owner_users ORDER BY created_at DESC").all();
+      const {results:perms}=await env.DB.prepare("SELECT user_id,profile_id,can_view,can_cancel,can_block FROM owner_permissions").all();
+      return json({users:results||[],permissions:perms||[]});
+    }
+    if(route==="users" && method==="POST") {
+      const d=await readBody(request), username=clean(d.username,80).toLowerCase(), display=clean(d.display_name,100), password=String(d.password||"");
+      if(!/^[a-z0-9._-]{3,80}$/.test(username)||!display||password.length<12||password.length>200)return json({error:"Login: 3–80 znaków (litery, cyfry, . _ -). Hasło: minimum 12 znaków."},400);
+      const uid=id(),salt=id(),hash=await hashPassword(password,salt);
+      try {await env.DB.prepare("INSERT INTO owner_users(id,username,display_name,password_salt,password_hash) VALUES(?,?,?,?,?)").bind(uid,username,display,salt,hash).run();}
+      catch{return json({error:"Login jest już zajęty."},409);}
+      return json({success:true,id:uid});
+    }
+    const userMatch=route.match(/^users\/([^/]+)$/);
+    if(userMatch && method==="PATCH") {
+      const d=await readBody(request), user=await env.DB.prepare("SELECT id FROM owner_users WHERE id=?").bind(userMatch[1]).first();
+      if(!user)return json({error:"Nie znaleziono konta."},404);
+      if(typeof d.active==="boolean")await env.DB.prepare("UPDATE owner_users SET active=?,session_version=session_version+1 WHERE id=?").bind(d.active?1:0,user.id).run();
+      if(d.password!==undefined){const pw=String(d.password);if(pw.length<12||pw.length>200)return json({error:"Hasło musi mieć 12–200 znaków."},400);const salt=id();await env.DB.prepare("UPDATE owner_users SET password_salt=?,password_hash=?,session_version=session_version+1 WHERE id=?").bind(salt,await hashPassword(pw,salt),user.id).run();}
+      return json({success:true});
+    }
+    const permissionMatch=route.match(/^users\/([^/]+)\/permissions$/);
+    if(permissionMatch && method==="PUT") {
+      const d=await readBody(request), uid=permissionMatch[1], profileId=clean(d.profileId,80);
+      if(!profileId || !(await env.DB.prepare("SELECT id FROM owner_users WHERE id=?").bind(uid).first()) || !(await env.DB.prepare("SELECT id FROM profiles WHERE id=?").bind(profileId).first()))return json({error:"Nieprawidłowe konto lub profil."},400);
+      const view=!!d.can_view, cancel=view&&!!d.can_cancel, block=view&&!!d.can_block;
+      await env.DB.prepare("INSERT INTO owner_permissions(user_id,profile_id,can_view,can_cancel,can_block) VALUES(?,?,?,?,?) ON CONFLICT(user_id,profile_id) DO UPDATE SET can_view=excluded.can_view,can_cancel=excluded.can_cancel,can_block=excluded.can_block").bind(uid,profileId,view?1:0,cancel?1:0,block?1:0).run();
+      return json({success:true});
+    }
 
     if (route === "profiles" && method === "GET") {
       const { results } = await env.DB.prepare("SELECT * FROM profiles ORDER BY created_at DESC").all();
