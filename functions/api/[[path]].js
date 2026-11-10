@@ -1,3 +1,4 @@
+import { notifyOwners } from "../_lib/push.js";
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
     status,
@@ -165,6 +166,7 @@ export async function onRequest({ request, env }) {
       ["Jak się ubieramy", data.outfit], ["Co chcemy jeść", data.food],
       ["Wiadomość", data.message]
     ]);
+    await notifyOwners(env,profiles.map(p=>p.id),{title:"Nowa rezerwacja ❤️",body:`${date} o ${time} · ${profiles.map(p=>p.name).join(", ")}`,tag:`booking-${groupId}`,url:"/owner"});
     return json({ success: true, id: groupId, count: profiles.length });
   }
 
@@ -191,6 +193,27 @@ export async function onRequest({ request, env }) {
     if(route==="profiles" && method==="GET") {
       const {results}=await env.DB.prepare("SELECT p.id,p.name,op.can_view,op.can_cancel,op.can_block FROM owner_permissions op JOIN profiles p ON p.id=op.profile_id WHERE op.user_id=? AND op.can_view=1 AND p.deleted_at IS NULL ORDER BY p.name").bind(user.id).all();
       return json(results||[]);
+    }
+    if(route==="push/config" && method==="GET")return json({publicKey:env.VAPID_PUBLIC_KEY||""});
+    if(route==="push/subscriptions" && method==="POST") {
+      const d=await readBody(request), sub=d.subscription;
+      if(!sub || typeof sub.endpoint!=="string" || sub.endpoint.length>2048 || !sub.keys || typeof sub.keys.p256dh!=="string" || typeof sub.keys.auth!=="string" || sub.keys.p256dh.length>200 || sub.keys.auth.length>100)return json({error:"Nieprawidłowa subskrypcja."},400);
+      let host;try{const u=new URL(sub.endpoint);if(u.protocol!=="https:")throw Error();host=u.hostname;}catch{return json({error:"Nieprawidłowy adres powiadomień."},400);}
+      if(!["fcm.googleapis.com","updates.push.services.mozilla.com","web.push.apple.com"].includes(host) && !host.endsWith(".push.apple.com"))return json({error:"Nieobsługiwany serwer powiadomień."},400);
+      await env.DB.prepare("INSERT INTO push_subscriptions(endpoint,user_id,p256dh,auth) VALUES(?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth").bind(sub.endpoint,user.id,sub.keys.p256dh,sub.keys.auth).run();
+      return json({success:true});
+    }
+    if(route==="push/subscriptions" && method==="DELETE") {
+      const d=await readBody(request);
+      await env.DB.prepare("DELETE FROM push_subscriptions WHERE user_id=? AND endpoint=?").bind(user.id,clean(d.endpoint,2048)).run();
+      return json({success:true});
+    }
+    if(route==="push/test" && method==="POST") {
+      const {results}=await env.DB.prepare("SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE user_id=?").bind(user.id).all();
+      const {sendPush}=await import("../_lib/push.js");
+      const statuses=await Promise.allSettled((results||[]).map(r=>sendPush(env,{endpoint:r.endpoint,keys:{p256dh:r.p256dh,auth:r.auth}},{title:"Date Booking 🔔",body:"Powiadomienia działają!",url:"/owner",tag:"push-test"})));
+      if(!statuses.some(r=>r.status==="fulfilled"&&r.value>=200&&r.value<300))return json({error:"Nie udało się wysłać testu. Sprawdź konfigurację kluczy."},502);
+      return json({success:true});
     }
     if(route==="calendar" && method==="GET") {
       const from=clean(url.searchParams.get("from"),10), to=clean(url.searchParams.get("to"),10), profileId=clean(url.searchParams.get("profileId"),80);
@@ -225,6 +248,7 @@ export async function onRequest({ request, env }) {
       if(!(await allowed(env,user.id,booking.profile_id,"can_cancel")))return json({error:"Brak uprawnienia do anulowania."},403);
       await env.DB.prepare("UPDATE bookings SET status='cancelled' WHERE id=? AND status='confirmed'").bind(cancel[1]).run();
       await discord(env,"❌ Anulowanie spotkania",[["Osoba",booking.profile_name],["Data",booking.date],["Godzina",booking.time]]);
+      await notifyOwners(env,[booking.profile_id],{title:"Odwołano spotkanie",body:`${booking.date} o ${booking.time} · ${booking.profile_name}`,url:"/owner",tag:`cancel-${booking.id}`});
       return json({success:true});
     }
     return json({error:"Nie znaleziono endpointu."},404);
@@ -391,6 +415,7 @@ export async function onRequest({ request, env }) {
         ["Osoba", booking.profile_name], 
         ["Data", booking.date], ["Godzina", booking.time]
       ]);
+      await notifyOwners(env,[booking.profile_id],{title:"Odwołano spotkanie",body:`${booking.date} o ${booking.time} · ${booking.profile_name}`,url:"/owner",tag:`cancel-${booking.id}`});
       return json({ success: true });
     }
   }

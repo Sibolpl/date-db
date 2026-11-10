@@ -7,3 +7,7 @@ binding = "DB"
 database_name = "date-booking-db"
 database_id = "d5c692fd-799b-4da9-9ad5-7da6f9e0543e"
 migrations_dir = "migrations"
+
+[vars]
+VAPID_PUBLIC_KEY = "BAWv2L-tkfECUQu6gbrnXkvyGy1g6-wzAdrJ-tAyldSRCOwPD3fRoU5PL7AUyuFL0lcVie9_KLptrmEx5KYPTGE"
+VAPID_SUBJECT = "https://date-booking.pages.dev/"
