@@ -12,3 +12,46 @@
 .schedule-range label{font-size:13px;min-width:95px}
 .schedule-range select{display:block;width:100%;margin-top:4px}
 @media(max-width:520px){.schedule-day-head{align-items:start;flex-direction:column}.schedule-range{width:100%}}
+
+
+/* Przełącznik motywu: jedna preferencja na wszystkich trzech stronach. */
+.header-actions{display:flex;align-items:center;gap:14px;margin-left:auto}
+.theme-label{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;white-space:nowrap}
+.theme-select{width:auto;min-width:126px;margin:0;padding:8px 9px;font-size:12px;cursor:pointer;background:var(--paper);color:var(--ink)}
+@media(max-width:540px){.header-actions{gap:9px}.theme-label{font-size:0}.theme-select{min-width:112px;max-width:128px;font-size:11px}.brand{font-size:20px}.brand span{font-size:14px}.admin-link{font-size:11px}}
+/* Domyślny tryb ciemny jest aktywny również przy ustawieniu systemowym. */
+:root[data-theme="dark"]{--ink:#f1e9e7;--muted:#b9acb2;--line:#41383f;--paper:#262229;--bg:#17171d;--accent:#ef9aa8;--accent-dark:#c87384;--soft:#3c2934;--green:#83caa1;--shadow:0 16px 50px #00000035;color-scheme:dark}
+@media(prefers-color-scheme:dark){:root[data-theme="auto"]{--ink:#f1e9e7;--muted:#b9acb2;--line:#41383f;--paper:#262229;--bg:#17171d;--accent:#ef9aa8;--accent-dark:#c87384;--soft:#3c2934;--green:#83caa1;--shadow:0 16px 50px #00000035;color-scheme:dark}}
+:root[data-theme="light"]{color-scheme:light}
+/* Kolory wcześniej wpisane na sztywno w elementach. */
+:root[data-theme="dark"] .topbar{background:#211e25}
+:root[data-theme="dark"] .profile-card,:root[data-theme="dark"] .icon-btn,:root[data-theme="dark"] .day,:root[data-theme="dark"] .time-slot,:root[data-theme="dark"] input,:root[data-theme="dark"] textarea,:root[data-theme="dark"] select,:root[data-theme="dark"] .view-switch button{background:var(--paper);color:var(--ink)}
+:root[data-theme="dark"] .profile-card:hover,:root[data-theme="dark"] .profile-card.selected{background:#382832}
+:root[data-theme="dark"] .day.busy{background:#211e25;color:#a69ba2}
+:root[data-theme="dark"] .day.selected,:root[data-theme="dark"] .view-switch button.active{background:var(--soft);color:var(--accent)}
+:root[data-theme="dark"] .time-panel{background:#201e24}
+:root[data-theme="dark"] .time-slot.selected{background:var(--accent);color:#1e141a}
+:root[data-theme="dark"] label{color:#d7cbd0}
+:root[data-theme="dark"] .primary{background:#c77385;color:#1c1015}
+:root[data-theme="dark"] .primary:hover{background:var(--accent)}
+:root[data-theme="dark"] .schedule-day{border-color:var(--line)}
+:root[data-theme="dark"] .schedule-range{background:#322831}
+:root[data-theme="dark"] .danger{background:#3d262c;border-color:#75414c;color:#ffb5bf}
+:root[data-theme="dark"] footer{color:var(--muted)}
+:root[data-theme="dark"] .theme-select{background:var(--paper);color:var(--ink)}
+@media(prefers-color-scheme:dark){
+:root[data-theme="auto"] .topbar{background:#211e25}
+:root[data-theme="auto"] .profile-card,:root[data-theme="auto"] .icon-btn,:root[data-theme="auto"] .day,:root[data-theme="auto"] .time-slot,:root[data-theme="auto"] input,:root[data-theme="auto"] textarea,:root[data-theme="auto"] select,:root[data-theme="auto"] .view-switch button{background:var(--paper);color:var(--ink)}
+:root[data-theme="auto"] .profile-card:hover,:root[data-theme="auto"] .profile-card.selected{background:#382832}
+:root[data-theme="auto"] .day.busy{background:#211e25;color:#a69ba2}
+:root[data-theme="auto"] .day.selected,:root[data-theme="auto"] .view-switch button.active{background:var(--soft);color:var(--accent)}
+:root[data-theme="auto"] .time-panel{background:#201e24}
+:root[data-theme="auto"] .time-slot.selected{background:var(--accent);color:#1e141a}
+:root[data-theme="auto"] label{color:#d7cbd0}
+:root[data-theme="auto"] .primary{background:#c77385;color:#1c1015}
+:root[data-theme="auto"] .primary:hover{background:var(--accent)}
+:root[data-theme="auto"] .schedule-day{border-color:var(--line)}
+:root[data-theme="auto"] .schedule-range{background:#322831}
+:root[data-theme="auto"] .danger{background:#3d262c;border-color:#75414c;color:#ffb5bf}
+:root[data-theme="auto"] footer{color:var(--muted)}
+}
