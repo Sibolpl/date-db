@@ -55,3 +55,10 @@
 :root[data-theme="auto"] .danger{background:#3d262c;border-color:#75414c;color:#ffb5bf}
 :root[data-theme="auto"] footer{color:var(--muted)}
 }
+
+/* Dodatkowe akcje administratora */
+.schedule-head-actions,.profile-form-actions,.cleanup-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.schedule-head-actions button{white-space:nowrap}
+.cleanup-actions{margin-top:16px}
+.cleanup-actions .status{margin:0}
+@media(max-width:560px){.schedule-head-actions{margin-top:8px}.schedule-day-head{flex-wrap:wrap}}

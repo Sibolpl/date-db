@@ -31,6 +31,7 @@
         <label class="filter-label">Filtr profilu <select id="profileFilter"><option value="">Wszystkie profile</option></select></label>
         <div id="adminCalendar" class="calendar admin-calendar"></div>
         <div id="adminEvents" class="event-list"></div>
+        <div class="cleanup-actions"><button class="danger" id="clearCancelledBtn" type="button">Wyczyść anulowane spotkania</button><p id="clearCancelledStatus" class="status" role="status"></p></div>
       </section>
       <section class="panel">
         <div class="section-heading"><span class="step">04</span><div><h2>Stały tygodniowy grafik</h2><p>Ustaw kilka przedziałów dostępności dla każdej osoby. Grafik powtarza się co tydzień.</p></div></div>
@@ -58,7 +59,7 @@
             <label>Nazwa / imię<input id="profileName" required maxlength="100"></label>
             <label>Opis<input id="profileDescription" maxlength="300"></label>
             <label>Adres zdjęcia (opcjonalnie)<input id="profilePhoto" type="url" placeholder="https://…"></label>
-            <button class="primary">Dodaj profil</button><p id="profileStatus" class="status"></p>
+            <div class="profile-form-actions"><button class="primary" id="profileSubmitBtn">Dodaj profil</button><button class="secondary hidden" id="profileCancelEdit" type="button">Anuluj edycję</button></div><p id="profileStatus" class="status" role="status"></p>
           </form>
           <div id="profileList" class="manage-list"></div>
         </section>

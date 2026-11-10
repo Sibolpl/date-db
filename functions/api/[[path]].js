@@ -404,6 +404,15 @@ export async function onRequest({ request, env }) {
       return json({ success: true });
     }
 
+    // Usuwa wyłącznie już anulowane wpisy; aktywne rezerwacje są nietknięte.
+    // Operacja jest dostępna tylko dla zalogowanego administratora.
+    if (route === "bookings/cancelled" && method === "DELETE") {
+      // D1 foreign keys: push_reminders ma ON DELETE CASCADE do bookings.
+      // SQLite changes() zwraca liczbę usuniętych rezerwacji, bez kaskady.
+      const result = await env.DB.prepare("DELETE FROM bookings WHERE status = 'cancelled'").run();
+      return json({success:true,deleted:result.meta?.changes ?? 0});
+    }
+
     const cancelMatch = route.match(/^bookings\/([^/]+)\/cancel$/);
     if (cancelMatch && method === "POST") {
       const booking = await env.DB.prepare(

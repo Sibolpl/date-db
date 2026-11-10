@@ -3,6 +3,7 @@ const pad=n=>String(n).padStart(2,"0");
 const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const parse=s=>new Date(`${s}T12:00:00`);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let editingProfileId=null;
 const state={date:new Date(new Date().getFullYear(),new Date().getMonth(),1),view:"month",profiles:[],bookings:[],blocks:[]};
 const api=async(path,options={})=>{const r=await fetch(`/api/${path}`,{headers:{"Content-Type":"application/json"},...options});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Błąd");return d;};
 function showDashboard(){ $("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");refreshAll(); }
@@ -18,12 +19,23 @@ async function loadProfiles(){
   $("scheduleProfile").innerHTML=state.profiles.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
   if(state.profiles.some(p=>p.id===previousScheduleProfile)) $("scheduleProfile").value=previousScheduleProfile;
   await loadSchedule();
-  $("profileList").innerHTML=state.profiles.map(p=>`<div class="manage-item"><div><strong>${esc(p.name)}</strong><small>${p.active?"Aktywny":"Nieaktywny"} · ${esc(p.description)}</small></div><button class="secondary" data-toggle="${p.id}" data-active="${p.active}">${p.active?"Dezaktywuj":"Aktywuj"}</button><button class="danger" data-delete="${p.id}">Usuń profil</button></div>`).join("")||'<p class="muted">Brak profili.</p>';
+  $("profileList").innerHTML=state.profiles.map(p=>`<div class="manage-item"><div><strong>${esc(p.name)}</strong><small>${p.active?"Aktywny":"Nieaktywny"} · ${esc(p.description)}</small></div><button class="secondary" data-edit="${p.id}">Edytuj</button><button class="secondary" data-toggle="${p.id}" data-active="${p.active}">${p.active?"Dezaktywuj":"Aktywuj"}</button><button class="danger" data-delete="${p.id}">Usuń profil</button></div>`).join("")||'<p class="muted">Brak profili.</p>';
+  $("profileList").querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
+    const p=state.profiles.find(x=>x.id===b.dataset.edit);if(!p)return;
+    editingProfileId=p.id;
+    $("profileName").value=p.name||"";
+    $("profileDescription").value=p.description||"";
+    $("profilePhoto").value=p.photo_url||"";
+    $("profileSubmitBtn").textContent="Zapisz zmiany";
+    $("profileCancelEdit").classList.remove("hidden");
+    $("profileStatus").textContent=`Edytujesz profil: ${p.name}`;
+    $("profileForm").scrollIntoView({behavior:"smooth",block:"center"});
+  });
   $("profileList").querySelectorAll("[data-toggle]").forEach(b=>b.onclick=async()=>{const p=state.profiles.find(x=>x.id===b.dataset.toggle);await api(`admin/profiles/${p.id}`,{method:"PATCH",body:JSON.stringify({...p,active:!p.active})});refreshAll();});
   $("profileList").querySelectorAll("[data-delete]").forEach(b=>b.onclick=async()=>{
     const p=state.profiles.find(x=>x.id===b.dataset.delete);
     if(!confirm(`Usunąć profil „${p.name}”? Zniknie z list i rezerwacji. Historia spotkań zostanie zachowana.`))return;
-    try{await api(`admin/profiles/${p.id}`,{method:"DELETE"});$("profileStatus").textContent="Profil usunięty.";await refreshAll();}
+    try{await api(`admin/profiles/${p.id}`,{method:"DELETE"});if(editingProfileId===p.id)resetProfileEdit();$("profileStatus").textContent="Profil usunięty.";await refreshAll();}
     catch(e){$("profileStatus").textContent=e.message;}
   });
 }
@@ -65,7 +77,32 @@ function renderEvents(){
   $("adminEvents").querySelectorAll("[data-cancel]").forEach(b=>b.onclick=async()=>{if(confirm("Anulować to spotkanie?")){await api(`admin/bookings/${b.dataset.cancel}/cancel`,{method:"POST"});loadCalendar();}});
   $("adminEvents").querySelectorAll("[data-unblock]").forEach(b=>b.onclick=async()=>{if(confirm("Usunąć blokadę?")){await api(`admin/blocks/${b.dataset.unblock}`,{method:"DELETE"});loadCalendar();}});
 }
-$("profileForm").onsubmit=async e=>{e.preventDefault();try{await api("admin/profiles",{method:"POST",body:JSON.stringify({name:$("profileName").value,description:$("profileDescription").value,photo_url:$("profilePhoto").value})});e.target.reset();$("profileStatus").textContent="Profil dodany.";await loadProfiles();}catch(err){$("profileStatus").textContent=err.message;}};
+function resetProfileEdit(){editingProfileId=null;$("profileForm").reset();$("profileSubmitBtn").textContent="Dodaj profil";$("profileCancelEdit").classList.add("hidden");}
+$("profileCancelEdit").onclick=()=>{resetProfileEdit();$("profileStatus").textContent="Anulowano edycję.";};
+$("profileForm").onsubmit=async e=>{
+  e.preventDefault();
+  const profile=state.profiles.find(p=>p.id===editingProfileId);
+  const payload={name:$("profileName").value,description:$("profileDescription").value,photo_url:$("profilePhoto").value};
+  try{
+    if(editingProfileId){
+      if(!profile)throw new Error("Nie znaleziono edytowanego profilu.");
+      await api(`admin/profiles/${editingProfileId}`,{method:"PATCH",body:JSON.stringify({...payload,active:!!profile.active})});
+    }else await api("admin/profiles",{method:"POST",body:JSON.stringify(payload)});
+    const msg=editingProfileId?"Zmiany profilu zapisane.":"Profil dodany.";
+    resetProfileEdit();$("profileStatus").textContent=msg;await loadProfiles();
+  }catch(err){$("profileStatus").textContent=err.message;}
+};
+$("clearCancelledBtn").onclick=async()=>{
+  const btn=$("clearCancelledBtn");
+  if(!confirm("Trwale usunąć WSZYSTKIE anulowane spotkania z historii? Aktywne spotkania pozostaną bez zmian. Tej operacji nie można cofnąć."))return;
+  btn.disabled=true;
+  try{
+    const d=await api("admin/bookings/cancelled",{method:"DELETE"});
+    $("clearCancelledStatus").textContent=`Usunięto ${d.deleted} anulowanych spotkań.`;
+    await loadCalendar();
+  }catch(err){$("clearCancelledStatus").textContent=err.message;}
+  finally{btn.disabled=false;}
+};
 $("blockForm").onsubmit=async e=>{e.preventDefault();try{await api("admin/blocks",{method:"POST",body:JSON.stringify({profileId:$("blockProfile").value,date:$("blockDate").value,time:$("blockTime").value,reason:$("blockReason").value})});$("blockStatus").textContent="Termin zablokowany.";e.target.reset();loadCalendar();}catch(err){$("blockStatus").textContent=err.message;}};
 $("adminPrev").onclick=()=>{if(state.view==="day")state.date.setDate(state.date.getDate()-1);else if(state.view==="week")state.date.setDate(state.date.getDate()-7);else state.date.setMonth(state.date.getMonth()-1);loadCalendar();};
 $("adminNext").onclick=()=>{if(state.view==="day")state.date.setDate(state.date.getDate()+1);else if(state.view==="week")state.date.setDate(state.date.getDate()+7);else state.date.setMonth(state.date.getMonth()+1);loadCalendar();};
@@ -92,7 +129,13 @@ async function loadSchedule(){
   catch(err){$("scheduleStatus").textContent=err.message;}
 }
 function renderSchedule(){
-  $("scheduleDays").innerHTML=dayNames.map((name,day)=>`<div class="schedule-day"><div class="schedule-day-head"><strong>${name}</strong><button type="button" class="secondary" data-add-day="${day}">+ Dodaj przedział</button></div><div class="schedule-ranges">${scheduleSlots.map((slot,index)=>slot.weekday===day?`<div class="schedule-range"><label>Od <select data-start="${index}">${timeOptions(slot.start_time)}</select></label><label>Do <select data-end="${index}">${timeOptions(slot.end_time)}</select></label><button type="button" class="danger" data-remove="${index}">Usuń</button></div>`:"").join("")||'<span class="muted">Niedostępny</span>'}</div></div>`).join("");
+  $("scheduleDays").innerHTML=dayNames.map((name,day)=>`<div class="schedule-day"><div class="schedule-day-head"><strong>${name}</strong><div class="schedule-head-actions"><button type="button" class="secondary" data-all-day="${day}">Cały dzień</button><button type="button" class="secondary" data-add-day="${day}">+ Dodaj przedział</button></div></div><div class="schedule-ranges">${scheduleSlots.map((slot,index)=>slot.weekday===day?`<div class="schedule-range"><label>Od <select data-start="${index}">${timeOptions(slot.start_time)}</select></label><label>Do <select data-end="${index}">${timeOptions(slot.end_time)}</select></label><button type="button" class="danger" data-remove="${index}">Usuń</button></div>`:"").join("")||'<span class="muted">Niedostępny</span>'}</div></div>`).join("");
+  $("scheduleDays").querySelectorAll("[data-all-day]").forEach(b=>b.onclick=()=>{
+    const day=Number(b.dataset.allDay);
+    scheduleSlots=scheduleSlots.filter(slot=>slot.weekday!==day);
+    scheduleSlots.push({weekday:day,start_time:"00:00",end_time:"23:59"});
+    renderSchedule();$("scheduleStatus").textContent="Ustawiono cały dzień. Kliknij „Zapisz grafik osoby”, aby zatwierdzić.";
+  });
   $("scheduleDays").querySelectorAll("[data-add-day]").forEach(b=>b.onclick=()=>{scheduleSlots.push({weekday:Number(b.dataset.addDay),start_time:"09:00",end_time:"12:00"});renderSchedule();});
   $("scheduleDays").querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{scheduleSlots.splice(Number(b.dataset.remove),1);renderSchedule();});
   $("scheduleDays").querySelectorAll("[data-start]").forEach(el=>el.onchange=()=>{scheduleSlots[Number(el.dataset.start)].start_time=el.value;});
