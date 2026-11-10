@@ -25,6 +25,14 @@
         <div id="adminCalendar" class="calendar admin-calendar"></div>
         <div id="adminEvents" class="event-list"></div>
       </section>
+      <section class="panel">
+        <div class="section-heading"><span class="step">04</span><div><h2>Stały tygodniowy grafik</h2><p>Ustaw kilka przedziałów dostępności dla każdej osoby. Grafik powtarza się co tydzień.</p></div></div>
+        <label>Wybierz osobę <select id="scheduleProfile"></select></label>
+        <div id="scheduleDays" class="schedule-days"></div>
+        <button id="saveSchedule" class="primary" type="button">Zapisz grafik osoby</button>
+        <p id="scheduleStatus" class="status" role="status"></p>
+        <p class="muted">Godziny rezerwacji na stronie: od 09:00 do 19:30, co 30 minut. Przedziały nie mogą się nakładać. Puste dni oznaczają brak dostępności. Ustawienie grafiku nie anuluje już zapisanych spotkań.</p>
+      </section>
       <div class="admin-columns">
         <section class="panel">
           <div class="section-heading"><span class="step">02</span><div><h2>Profile</h2><p>Dodawaj osoby dostępne do wyboru</p></div></div>

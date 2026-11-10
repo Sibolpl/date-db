@@ -14,6 +14,10 @@ async function loadProfiles(){
   state.profiles=await api("admin/profiles");
   $("profileFilter").innerHTML='<option value="">Wszystkie profile</option>'+state.profiles.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
   $("blockProfile").innerHTML='<option value="">Wszystkie profile</option>'+state.profiles.filter(p=>p.active).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  const previousScheduleProfile=$("scheduleProfile").value;
+  $("scheduleProfile").innerHTML=state.profiles.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  if(state.profiles.some(p=>p.id===previousScheduleProfile)) $("scheduleProfile").value=previousScheduleProfile;
+  await loadSchedule();
   $("profileList").innerHTML=state.profiles.map(p=>`<div class="manage-item"><div><strong>${esc(p.name)}</strong><small>${p.active?"Aktywny":"Nieaktywny"} · ${esc(p.description)}</small></div><button class="secondary" data-toggle="${p.id}" data-active="${p.active}">${p.active?"Dezaktywuj":"Aktywuj"}</button></div>`).join("")||'<p class="muted">Brak profili.</p>';
   $("profileList").querySelectorAll("[data-toggle]").forEach(b=>b.onclick=async()=>{const p=state.profiles.find(x=>x.id===b.dataset.toggle);await api(`admin/profiles/${p.id}`,{method:"PATCH",body:JSON.stringify({...p,active:!p.active})});refreshAll();});
 }
@@ -62,5 +66,39 @@ $("adminNext").onclick=()=>{if(state.view==="day")state.date.setDate(state.date.
 $("profileFilter").onchange=loadCalendar;
 function setViewButtons(){document.querySelectorAll("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===state.view));}
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{state.view=b.dataset.view;setViewButtons();loadCalendar();});
+
+const dayNames=["Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota","Niedziela"];
+let scheduleSlots=[];
+const timeOptions=(selected)=>{
+  let options="";
+  for(let mins=0;mins<24*60;mins+=15){
+    const time=`${pad(Math.floor(mins/60))}:${pad(mins%60)}`;
+    options+=`<option value="${time}" ${time===selected?"selected":""}>${time}</option>`;
+  }
+  options+=`<option value="23:59" ${selected==="23:59"?"selected":""}>23:59 (koniec dnia)</option>`;
+  return options;
+};
+async function loadSchedule(){
+  const profileId=$("scheduleProfile").value;
+  $("scheduleStatus").textContent="";
+  if(!profileId){scheduleSlots=[];renderSchedule();return;}
+  try{scheduleSlots=await api(`admin/schedule?profileId=${encodeURIComponent(profileId)}`);renderSchedule();}
+  catch(err){$("scheduleStatus").textContent=err.message;}
+}
+function renderSchedule(){
+  $("scheduleDays").innerHTML=dayNames.map((name,day)=>`<div class="schedule-day"><div class="schedule-day-head"><strong>${name}</strong><button type="button" class="secondary" data-add-day="${day}">+ Dodaj przedział</button></div><div class="schedule-ranges">${scheduleSlots.map((slot,index)=>slot.weekday===day?`<div class="schedule-range"><label>Od <select data-start="${index}">${timeOptions(slot.start_time)}</select></label><label>Do <select data-end="${index}">${timeOptions(slot.end_time)}</select></label><button type="button" class="danger" data-remove="${index}">Usuń</button></div>`:"").join("")||'<span class="muted">Niedostępny</span>'}</div></div>`).join("");
+  $("scheduleDays").querySelectorAll("[data-add-day]").forEach(b=>b.onclick=()=>{scheduleSlots.push({weekday:Number(b.dataset.addDay),start_time:"09:00",end_time:"12:00"});renderSchedule();});
+  $("scheduleDays").querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{scheduleSlots.splice(Number(b.dataset.remove),1);renderSchedule();});
+  $("scheduleDays").querySelectorAll("[data-start]").forEach(el=>el.onchange=()=>{scheduleSlots[Number(el.dataset.start)].start_time=el.value;});
+  $("scheduleDays").querySelectorAll("[data-end]").forEach(el=>el.onchange=()=>{scheduleSlots[Number(el.dataset.end)].end_time=el.value;});
+}
+$("scheduleProfile").onchange=loadSchedule;
+$("saveSchedule").onclick=async()=>{
+  const btn=$("saveSchedule");btn.disabled=true;$("scheduleStatus").textContent="Zapisywanie…";
+  try{await api("admin/schedule",{method:"PUT",body:JSON.stringify({profileId:$("scheduleProfile").value,slots:scheduleSlots})});$("scheduleStatus").textContent="Grafik zapisany.";await loadSchedule();$("scheduleStatus").textContent="Grafik zapisany.";}
+  catch(err){$("scheduleStatus").textContent=err.message;}
+  finally{btn.disabled=false;}
+};
+
 $("blockDate").value=key(new Date());
 checkSession().catch(e=>{$("loginStatus").textContent=e.message;});

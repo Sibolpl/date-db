@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { profiles: [], profileId: "", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selectedDate: "", selectedTime: "", availability: {booked:[],blocked:[]} };
+const state = { profiles: [], profileId: "", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selectedDate: "", selectedTime: "", availability: {booked:[],blocked:[],schedule:[]} };
 const pad = n => String(n).padStart(2,"0");
 const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const monthKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
@@ -21,6 +21,10 @@ function renderProfiles(){
   });
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function isScheduled(date,time){
+  const weekday=(new Date(`${date}T12:00:00Z`).getUTCDay()+6)%7;
+  return (state.availability.schedule||[]).some(s=>Number(s.weekday)===weekday && s.start_time<=time && time<s.end_time);
+}
 function isBusy(date,time=null){
   const booked=state.availability.booked.some(x=>x.date===date&&(!time||x.time===time));
   const blocked=state.availability.blocked.some(x=>x.date===date&&(!x.time||!time||x.time===time));
@@ -45,7 +49,7 @@ function renderCalendar(){
     const d=new Date(state.month.getFullYear(),state.month.getMonth(),n), key=dateKey(d);
     const b=document.createElement("button");b.type="button";b.className="day";
     const past=key<dateKey(new Date());
-    const fullyBusy=Array.from({length:21},(_,i)=>`${pad(9+Math.floor(i/2))}:${i%2?"30":"00"}`).every(t=>isBusy(key,t));
+    const fullyBusy=Array.from({length:96},(_,i)=>`${pad(Math.floor(i/4))}:${pad((i%4)*15)}`).every(t=>!isScheduled(key,t)||isBusy(key,t));
     b.innerHTML=`<span class="day-num">${n}</span>`;
     if(key===dateKey(new Date()))b.classList.add("today");
     if(key===state.selectedDate)b.classList.add("selected");
@@ -59,11 +63,11 @@ function renderTimes(){
   $("timePanel").classList.remove("hidden");
   $("selectedDateLabel").textContent=new Date(`${state.selectedDate}T12:00:00`).toLocaleDateString("pl-PL",{weekday:"long",day:"numeric",month:"long"});
   const slots=$("timeSlots");slots.innerHTML="";
-  for(let i=0;i<22;i++){
-    const hour=9+Math.floor(i/2), time=`${pad(hour)}:${i%2?"30":"00"}`;
+  for(let i=0;i<96;i++){
+    const hour=Math.floor(i/4), time=`${pad(hour)}:${pad((i%4)*15)}`;
     const btn=document.createElement("button");btn.type="button";btn.className="time-slot"+(state.selectedTime===time?" selected":"");btn.textContent=time;
     const past=state.selectedDate===dateKey(new Date())&&time<=`${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
-    btn.disabled=isBusy(state.selectedDate,time)||past;
+    btn.disabled=!isScheduled(state.selectedDate,time)||isBusy(state.selectedDate,time)||past;
     btn.onclick=()=>{state.selectedTime=time;renderTimes();};
     slots.append(btn);
   }

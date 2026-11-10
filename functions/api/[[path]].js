@@ -11,6 +11,11 @@ const readBody = async (request) => {
 const clean = (value, max = 500) => String(value ?? "").trim().slice(0, max);
 const validDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T12:00:00Z`));
 const validTime = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+const validQuarter = (s) => validTime(s) && Number(s.slice(3)) % 15 === 0;
+// Poniedziałek=0, niedziela=6; wszystkie terminy są interpretowane jako czas lokalny strony.
+const weekday = (date) => (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7;
+const scheduleAllows = (ranges, date, time) => ranges.some(r => r.weekday === weekday(date) && r.start_time <= time && time < r.end_time);
+
 
 async function sign(value, secret) {
   const key = await crypto.subtle.importKey(
@@ -79,7 +84,10 @@ export async function onRequest({ request, env }) {
       env.DB.prepare("SELECT date, time FROM bookings WHERE profile_id = ? AND date >= ? AND date < ? AND status = 'confirmed'").bind(profileId, start, end).all(),
       env.DB.prepare("SELECT date, time FROM blocked_slots WHERE (profile_id = ? OR profile_id IS NULL) AND date >= ? AND date < ?").bind(profileId, start, end).all()
     ]);
-    return json({ booked: booked.results || [], blocked: blocked.results || [] });
+    const schedule = await env.DB.prepare(
+      "SELECT weekday, start_time, end_time FROM weekly_availability WHERE profile_id = ? ORDER BY weekday, start_time"
+    ).bind(profileId).all();
+    return json({ booked: booked.results || [], blocked: blocked.results || [], schedule: schedule.results || [] });
   }
 
   if (path === "bookings" && method === "POST") {
@@ -88,12 +96,14 @@ export async function onRequest({ request, env }) {
     const guestName = clean(data.guestName, 100);
     const date = clean(data.date, 10);
     const time = clean(data.time, 5);
-    if (!profileId || !guestName || !validDate(date) || !validTime(time)) {
+    if (!profileId || !guestName || !validDate(date) || !validQuarter(time)) {
       return json({ error: "Uzupełnij imię, datę i godzinę." }, 400);
     }
     if (date < new Date().toISOString().slice(0,10)) return json({ error: "Nie można rezerwować dat z przeszłości." }, 400);
     const profile = await env.DB.prepare("SELECT id, name FROM profiles WHERE id = ? AND active = 1").bind(profileId).first();
     if (!profile) return json({ error: "Wybrany profil jest niedostępny." }, 404);
+    const schedule = await env.DB.prepare("SELECT weekday, start_time, end_time FROM weekly_availability WHERE profile_id = ?").bind(profileId).all();
+    if (!scheduleAllows(schedule.results || [], date, time)) return json({ error: "Ta godzina jest poza grafikiem dostępności osoby." }, 409);
     const blocked = await env.DB.prepare(
       "SELECT id FROM blocked_slots WHERE date = ? AND (profile_id = ? OR profile_id IS NULL) AND (time IS NULL OR time = ?)"
     ).bind(date, profileId, time).first();
@@ -160,6 +170,42 @@ export async function onRequest({ request, env }) {
       const data = await readBody(request);
       await env.DB.prepare("UPDATE profiles SET name = ?, description = ?, photo_url = ?, active = ? WHERE id = ?")
         .bind(clean(data.name,100), clean(data.description,300), clean(data.photo_url,500), data.active ? 1 : 0, profileMatch[1]).run();
+      return json({ success: true });
+    }
+
+    if (route === "schedule" && method === "GET") {
+      const profileId = clean(url.searchParams.get("profileId"), 80);
+      if (!profileId) return json({ error: "Wybierz profil." }, 400);
+      const profile = await env.DB.prepare("SELECT id FROM profiles WHERE id = ?").bind(profileId).first();
+      if (!profile) return json({ error: "Nie znaleziono profilu." }, 404);
+      const { results } = await env.DB.prepare("SELECT weekday, start_time, end_time FROM weekly_availability WHERE profile_id = ? ORDER BY weekday, start_time").bind(profileId).all();
+      return json(results || []);
+    }
+
+    if (route === "schedule" && method === "PUT") {
+      const data = await readBody(request);
+      const profileId = clean(data.profileId, 80);
+      const slots = data.slots;
+      if (!profileId || !Array.isArray(slots) || slots.length > 100) return json({ error: "Nieprawidłowy grafik." }, 400);
+      const profile = await env.DB.prepare("SELECT id FROM profiles WHERE id = ?").bind(profileId).first();
+      if (!profile) return json({ error: "Nie znaleziono profilu." }, 404);
+      const parsed = [];
+      for (const slot of slots) {
+        const day = Number(slot.weekday), start = clean(slot.start_time, 5), end = clean(slot.end_time, 5);
+        if (!Number.isInteger(day) || day < 0 || day > 6 || !validQuarter(start) || !(validQuarter(end) || end === "23:59") || start >= end) {
+          return json({ error: "Podaj poprawne przedziały od 00:00 do 23:59, co 15 minut (23:59 jako koniec dnia)." }, 400);
+        }
+        parsed.push({ weekday: day, start_time: start, end_time: end });
+      }
+      parsed.sort((a,b) => a.weekday-b.weekday || a.start_time.localeCompare(b.start_time));
+      for (let i=1; i<parsed.length; i++) {
+        if (parsed[i].weekday === parsed[i-1].weekday && parsed[i].start_time < parsed[i-1].end_time) {
+          return json({ error: "Przedziały jednego dnia nie mogą na siebie nachodzić." }, 400);
+        }
+      }
+      const statements = [env.DB.prepare("DELETE FROM weekly_availability WHERE profile_id = ?").bind(profileId),
+        ...parsed.map(slot => env.DB.prepare("INSERT INTO weekly_availability (id, profile_id, weekday, start_time, end_time) VALUES (?, ?, ?, ?, ?)").bind(id(), profileId, slot.weekday, slot.start_time, slot.end_time))];
+      await env.DB.batch(statements);
       return json({ success: true });
     }
 
