@@ -104,7 +104,7 @@ export async function onRequest({ request, env }) {
 
   if (path === "profiles" && method === "GET") {
     const { results } = await env.DB.prepare(
-      "SELECT id, name, description, photo_url FROM profiles WHERE active = 1 ORDER BY name"
+      "SELECT id, name, description, photo_url FROM profiles WHERE active = 1 AND deleted_at IS NULL ORDER BY name"
     ).all();
     return json(results || []);
   }
@@ -128,42 +128,44 @@ export async function onRequest({ request, env }) {
 
   if (path === "bookings" && method === "POST") {
     const data = await readBody(request);
-    const profileId = clean(data.profileId, 80);
+    // Backwards-compatible: accept a single profileId or multiple profileIds.
+    const rawIds = Array.isArray(data.profileIds) ? data.profileIds : [data.profileId];
+    const profileIds = [...new Set(rawIds.map(x => clean(x, 80)).filter(Boolean))];
     const guestName = clean(data.guestName, 100);
     const date = clean(data.date, 10);
     const time = clean(data.time, 5);
-    if (!profileId || !guestName || !validDate(date) || !validQuarter(time)) {
-      return json({ error: "Uzupełnij imię, datę i godzinę." }, 400);
+    if (!profileIds.length || profileIds.length > 20 || !guestName || !validDate(date) || !validQuarter(time)) {
+      return json({ error: "Wybierz od 1 do 20 osób, podaj imię, datę i godzinę." }, 400);
     }
     if (date < new Date().toISOString().slice(0,10)) return json({ error: "Nie można rezerwować dat z przeszłości." }, 400);
-    const profile = await env.DB.prepare("SELECT id, name FROM profiles WHERE id = ? AND active = 1").bind(profileId).first();
-    if (!profile) return json({ error: "Wybrany profil jest niedostępny." }, 404);
-    const schedule = await env.DB.prepare("SELECT weekday, start_time, end_time FROM weekly_availability WHERE profile_id = ?").bind(profileId).all();
-    if (!scheduleAllows(schedule.results || [], date, time)) return json({ error: "Ta godzina jest poza grafikiem dostępności osoby." }, 409);
-    const blocked = await env.DB.prepare(
-      "SELECT id FROM blocked_slots WHERE date = ? AND (profile_id = ? OR profile_id IS NULL) AND (time IS NULL OR time = ?)"
-    ).bind(date, profileId, time).first();
-    if (blocked) return json({ error: "Ten termin jest zablokowany. Wybierz inny." }, 409);
-
-    const bookingId = id();
+    const profiles = [];
+    for (const profileId of profileIds) {
+      const profile = await env.DB.prepare("SELECT id, name FROM profiles WHERE id = ? AND active = 1 AND deleted_at IS NULL").bind(profileId).first();
+      if (!profile) return json({ error: "Jedna z wybranych osób jest niedostępna. Odśwież stronę." }, 409);
+      const schedule = await env.DB.prepare("SELECT weekday, start_time, end_time FROM weekly_availability WHERE profile_id = ?").bind(profileId).all();
+      if (!scheduleAllows(schedule.results || [], date, time)) return json({ error: `Osoba ${profile.name} nie jest dostępna o tej godzinie.` }, 409);
+      const blocked = await env.DB.prepare("SELECT id FROM blocked_slots WHERE date = ? AND (profile_id = ? OR profile_id IS NULL) AND (time IS NULL OR time = ?)").bind(date, profileId, time).first();
+      if (blocked) return json({ error: `Termin osoby ${profile.name} jest zablokowany.` }, 409);
+      profiles.push(profile);
+    }
+    const groupId = id();
+    const statements = profiles.map(profile => env.DB.prepare(
+      "INSERT INTO bookings (id, profile_id, guest_name, date, time, place, outfit, food, message, group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id(), profile.id, guestName, date, time, clean(data.place), clean(data.outfit), clean(data.food), clean(data.message, 1500), groupId));
     try {
-      await env.DB.prepare(
-        "INSERT INTO bookings (id, profile_id, guest_name, date, time, place, outfit, food, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      ).bind(
-        bookingId, profileId, guestName, date, time,
-        clean(data.place), clean(data.outfit), clean(data.food), clean(data.message, 1500)
-      ).run();
+      // D1 batch executes as one transaction: no partial group bookings.
+      await env.DB.batch(statements);
     } catch (e) {
-      return json({ error: "Ten termin został już zajęty. Wybierz inną godzinę." }, 409);
+      return json({ error: "Co najmniej jeden termin został już zajęty. Wybierz inną godzinę." }, 409);
     }
 
     await discord(env, "❤️ Nowa rezerwacja spotkania", [
-      ["Osoba", profile.name], ["Imię rezerwującego", guestName],
+      ["Osoby", profiles.map(p=>p.name).join(", ")], ["Imię rezerwującego", guestName],
       ["Data", date], ["Godzina", time], ["Gdzie chcemy iść", data.place],
       ["Jak się ubieramy", data.outfit], ["Co chcemy jeść", data.food],
       ["Wiadomość", data.message]
     ]);
-    return json({ success: true, id: bookingId });
+    return json({ success: true, id: groupId, count: profiles.length });
   }
 
   if (path === "owner/login" && method === "POST") {
@@ -187,7 +189,7 @@ export async function onRequest({ request, env }) {
       return json({user:{username:user.username,display_name:user.display_name},permissions:await permissions(env,user.id)});
     }
     if(route==="profiles" && method==="GET") {
-      const {results}=await env.DB.prepare("SELECT p.id,p.name,op.can_view,op.can_cancel,op.can_block FROM owner_permissions op JOIN profiles p ON p.id=op.profile_id WHERE op.user_id=? AND op.can_view=1 ORDER BY p.name").bind(user.id).all();
+      const {results}=await env.DB.prepare("SELECT p.id,p.name,op.can_view,op.can_cancel,op.can_block FROM owner_permissions op JOIN profiles p ON p.id=op.profile_id WHERE op.user_id=? AND op.can_view=1 AND p.deleted_at IS NULL ORDER BY p.name").bind(user.id).all();
       return json(results||[]);
     }
     if(route==="calendar" && method==="GET") {
@@ -279,7 +281,7 @@ export async function onRequest({ request, env }) {
     }
 
     if (route === "profiles" && method === "GET") {
-      const { results } = await env.DB.prepare("SELECT * FROM profiles ORDER BY created_at DESC").all();
+      const { results } = await env.DB.prepare("SELECT * FROM profiles WHERE deleted_at IS NULL ORDER BY created_at DESC").all();
       return json(results || []);
     }
 
@@ -296,8 +298,16 @@ export async function onRequest({ request, env }) {
     const profileMatch = route.match(/^profiles\/([^/]+)$/);
     if (profileMatch && method === "PATCH") {
       const data = await readBody(request);
-      await env.DB.prepare("UPDATE profiles SET name = ?, description = ?, photo_url = ?, active = ? WHERE id = ?")
+      await env.DB.prepare("UPDATE profiles SET name = ?, description = ?, photo_url = ?, active = ? WHERE id = ? AND deleted_at IS NULL")
         .bind(clean(data.name,100), clean(data.description,300), clean(data.photo_url,500), data.active ? 1 : 0, profileMatch[1]).run();
+      return json({ success: true });
+    }
+
+    if (profileMatch && method === "DELETE") {
+      const profile = await env.DB.prepare("SELECT id FROM profiles WHERE id=? AND deleted_at IS NULL").bind(profileMatch[1]).first();
+      if (!profile) return json({ error: "Nie znaleziono profilu." }, 404);
+      // Soft delete preserves booking history, permissions and related records.
+      await env.DB.prepare("UPDATE profiles SET active=0, deleted_at=CURRENT_TIMESTAMP WHERE id=?").bind(profileMatch[1]).run();
       return json({ success: true });
     }
 
