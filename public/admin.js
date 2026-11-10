@@ -52,7 +52,7 @@ async function loadCalendar(){
   renderEvents();
 }
 function renderCalendar(){
-  const cal=$("adminCalendar");cal.innerHTML="";
+  const cal=$("adminCalendar");cal.innerHTML="";cal.style.gridTemplateColumns="";
   const [from,to]=range();const start=parse(from),end=parse(to);
   if(state.view==="day"){renderDay(cal,from);return;}
   ["Pn","Wt","Śr","Cz","Pt","So","Nd"].forEach(x=>{const d=document.createElement("div");d.className="weekday";d.textContent=x;cal.append(d);});
