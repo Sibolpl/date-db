@@ -34,6 +34,16 @@
         <div class="cleanup-actions"><button class="danger" id="clearCancelledBtn" type="button">Wyczyść anulowane spotkania</button><p id="clearCancelledStatus" class="status" role="status"></p></div>
       </section>
       <section class="panel">
+        <div class="section-heading"><span class="step">✦</span><div><h2>Propozycje do szczegółów spotkania</h2><p>Wpisz po jednej propozycji w każdym wierszu. Na stronie rezerwacji pojawią się rozwijane listy, a na końcu każdej z nich opcja „Inne”.</p></div></div>
+        <div class="form-grid">
+          <label>Gdzie chcemy iść?<textarea id="optionsPlace" rows="5" placeholder="Restauracja&#10;Spacer&#10;Kino"></textarea></label>
+          <label>Jak się ubieramy?<textarea id="optionsOutfit" rows="5" placeholder="Elegancko&#10;Na luzie"></textarea></label>
+          <label>Co chcemy jeść?<textarea id="optionsFood" rows="5" placeholder="Pizza&#10;Sushi&#10;Burger"></textarea></label>
+        </div>
+        <button id="saveBookingOptions" class="primary" type="button">Zapisz propozycje</button>
+        <p id="bookingOptionsStatus" class="status" role="status"></p>
+      </section>
+      <section class="panel">
         <div class="section-heading"><span class="step">04</span><div><h2>Stały tygodniowy grafik</h2><p>Ustaw kilka przedziałów dostępności dla każdej osoby. Grafik powtarza się co tydzień.</p></div></div>
         <label>Wybierz osobę <select id="scheduleProfile"></select></label>
         <div id="scheduleDays" class="schedule-days"></div>

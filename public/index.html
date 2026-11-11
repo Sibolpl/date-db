@@ -45,9 +45,9 @@
       <div class="section-heading"><span class="step">03</span><div><h2>Szczegóły spotkania</h2><p>Powiedz nam coś więcej</p></div></div>
       <form id="bookingForm">
         <div class="form-grid">
-          <label>Gdzie chcemy iść? <input id="place" maxlength="500" placeholder="Np. restauracja, spacer…"></label>
-          <label>Jak się ubieramy? <input id="outfit" maxlength="500" placeholder="Np. elegancko, na luzie…"></label>
-          <label>Co chcemy jeść? <input id="food" maxlength="500" placeholder="Na co masz ochotę?"></label>
+          <label>Gdzie chcemy iść? <select id="place" aria-label="Gdzie chcemy iść?"></select><input id="placeOther" class="hidden" maxlength="500" placeholder="Wpisz swoje miejsce" aria-label="Inne miejsce"></label>
+          <label>Jak się ubieramy? <select id="outfit" aria-label="Jak się ubieramy?"></select><input id="outfitOther" class="hidden" maxlength="500" placeholder="Wpisz swój strój" aria-label="Inny strój"></label>
+          <label>Co chcemy jeść? <select id="food" aria-label="Co chcemy jeść?"></select><input id="foodOther" class="hidden" maxlength="500" placeholder="Wpisz, co chcesz jeść" aria-label="Inne jedzenie"></label>
           <label class="full">Dodatkowa wiadomość <textarea id="message" maxlength="1500" rows="3" placeholder="Coś jeszcze?"></textarea></label>
         </div>
         <button class="primary wide" id="submitBooking" type="submit">Potwierdzam spotkanie ♥</button>

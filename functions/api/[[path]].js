@@ -110,6 +110,16 @@ export async function onRequest({ request, env }) {
     return json(results || []);
   }
 
+  // Public choices configured by the administrator (only published labels).
+  if (path === "booking-options" && method === "GET") {
+    const {results} = await env.DB.prepare(
+      "SELECT category, label FROM booking_detail_options ORDER BY category, sort_order, label"
+    ).all();
+    const choices={place:[],outfit:[],food:[]};
+    for(const row of results||[])if(Object.hasOwn(choices,row.category))choices[row.category].push(row.label);
+    return json(choices);
+  }
+
   if (path === "availability" && method === "GET") {
     const profileId = clean(url.searchParams.get("profileId"), 80);
     const month = clean(url.searchParams.get("month"), 7);
@@ -301,6 +311,39 @@ export async function onRequest({ request, env }) {
       if(!profileId || !(await env.DB.prepare("SELECT id FROM owner_users WHERE id=?").bind(uid).first()) || !(await env.DB.prepare("SELECT id FROM profiles WHERE id=?").bind(profileId).first()))return json({error:"Nieprawidłowe konto lub profil."},400);
       const view=!!d.can_view, cancel=view&&!!d.can_cancel, block=view&&!!d.can_block;
       await env.DB.prepare("INSERT INTO owner_permissions(user_id,profile_id,can_view,can_cancel,can_block) VALUES(?,?,?,?,?) ON CONFLICT(user_id,profile_id) DO UPDATE SET can_view=excluded.can_view,can_cancel=excluded.can_cancel,can_block=excluded.can_block").bind(uid,profileId,view?1:0,cancel?1:0,block?1:0).run();
+      return json({success:true});
+    }
+
+    if (route === "booking-options" && method === "GET") {
+      const {results} = await env.DB.prepare(
+        "SELECT category, label FROM booking_detail_options ORDER BY category, sort_order, label"
+      ).all();
+      const choices={place:[],outfit:[],food:[]};
+      for(const row of results||[])if(Object.hasOwn(choices,row.category))choices[row.category].push(row.label);
+      return json(choices);
+    }
+    if (route === "booking-options" && method === "PUT") {
+      const data=await readBody(request), categories=["place","outfit","food"];
+      const entries=[];
+      for(const category of categories){
+        const options=data[category];
+        if(!Array.isArray(options)||options.length>40)return json({error:"Maksymalnie 40 propozycji w każdej kategorii."},400);
+        const seen=new Set();
+        for(const raw of options){
+          if(typeof raw!=="string" || raw.trim().length>100)return json({error:"Każda propozycja może mieć maksymalnie 100 znaków."},400);
+          const label=raw.trim();
+          if(!label)continue;
+          if(label.toLocaleLowerCase("pl")==="inne")return json({error:"Nazwa «Inne» jest zarezerwowana dla pola własnej odpowiedzi."},400);
+          const norm=label.toLocaleLowerCase("pl");
+          if(seen.has(norm))continue;
+          seen.add(norm);
+          entries.push({category,label,sort:seen.size});
+        }
+      }
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM booking_detail_options"),
+        ...entries.map(x=>env.DB.prepare("INSERT INTO booking_detail_options(category,label,sort_order) VALUES(?,?,?)").bind(x.category,x.label,x.sort))
+      ]);
       return json({success:true});
     }
 

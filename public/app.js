@@ -96,6 +96,27 @@ function renderTimes(){
   }
 }
 
+// Dropdowns for booking details; "Inne" reveals a custom text field.
+const bookingFields=["place","outfit","food"];
+function renderDetailOptions(options){
+  for(const field of bookingFields){
+    const select=$(field), other=$(field+"Other"), previous=select.value;
+    select.replaceChildren(new Option("Wybierz propozycję (opcjonalnie)",""));
+    for(const value of options[field]||[])select.add(new Option(value,value));
+    select.add(new Option("Inne — wpisz własną odpowiedź","__other__"));
+    if([...select.options].some(o=>o.value===previous))select.value=previous;
+    const update=()=>{const custom=select.value==="__other__";other.classList.toggle("hidden",!custom);other.required=custom;if(!custom)other.value="";};
+    select.onchange=update;update();
+  }
+}
+function detailValue(field){
+  return $(field).value==="__other__"?$(field+"Other").value.trim():$(field).value;
+}
+async function loadDetailOptions(){
+  try{renderDetailOptions(await api("booking-options"));}
+  catch(e){$("bookingStatus").textContent="Nie udało się wczytać propozycji. Odśwież stronę.";renderDetailOptions({});}
+}
+
 $("prevMonth").onclick=()=>{state.month.setMonth(state.month.getMonth()-1);state.selectedDate="";state.selectedTime="";loadAvailability();};
 $("nextMonth").onclick=()=>{state.month.setMonth(state.month.getMonth()+1);state.selectedDate="";state.selectedTime="";loadAvailability();};
 $("bookingForm").addEventListener("submit",async e=>{
@@ -106,10 +127,10 @@ $("bookingForm").addEventListener("submit",async e=>{
   try{
     await api("bookings",{method:"POST",body:JSON.stringify({
       profileIds:state.profileIds,date:state.selectedDate,time:state.selectedTime,
-      place:$("place").value,outfit:$("outfit").value,food:$("food").value,message:$("message").value
+      place:detailValue("place"),outfit:detailValue("outfit"),food:detailValue("food"),message:$("message").value
     })});
     $("bookingPanel").innerHTML='<div class="success-screen"><p class="eyebrow">REZERWACJA ZAPISANA</p><h1>Dziękujemy! <em>♥</em></h1><p class="muted">Spotkanie zostało zapisane. Do zobaczenia!</p></div>';
   }catch(err){$("bookingStatus").textContent=err.message;await loadAvailability();}
   finally{btn.disabled=false;btn.textContent="Potwierdzam spotkanie ♥";}
 });
-(async()=>{try{state.profiles=await api("profiles");renderProfiles();await loadAvailability();}catch(e){$("profiles").textContent=e.message;}})();
+(async()=>{await loadDetailOptions();try{state.profiles=await api("profiles");renderProfiles();await loadAvailability();}catch(e){$("profiles").textContent=e.message;}})();

@@ -10,7 +10,7 @@ function showDashboard(){ $("loginPanel").classList.add("hidden");$("dashboard")
 async function checkSession(){try{await api("admin/session");showDashboard();}catch{$("loginPanel").classList.remove("hidden");}}
 $("loginForm").onsubmit=async e=>{e.preventDefault();$("loginStatus").textContent="";try{await api("admin/login",{method:"POST",body:JSON.stringify({password:$("adminPassword").value})});showDashboard();}catch(err){$("loginStatus").textContent=err.message;}};
 $("logoutBtn").onclick=async()=>{await api("admin/logout",{method:"POST"});location.reload();};
-async function refreshAll(){await Promise.all([loadProfiles(),loadCalendar()]);await loadUsers();}
+async function refreshAll(){await Promise.all([loadProfiles(),loadCalendar(),loadBookingOptions()]);await loadUsers();}
 async function loadProfiles(){
   state.profiles=await api("admin/profiles");
   $("profileFilter").innerHTML='<option value="">Wszystkie profile</option>'+state.profiles.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
@@ -184,4 +184,24 @@ $("userForm").onsubmit=async e=>{
   e.preventDefault();
   try{await api("admin/users",{method:"POST",body:JSON.stringify({username:$("userLogin").value,display_name:$("userDisplay").value,password:$("userPassword").value})});e.target.reset();$("userStatus").textContent="Konto utworzone. Nadaj mu teraz uprawnienia poniżej.";await loadUsers();}
   catch(err){$("userStatus").textContent=err.message;}
+};
+
+// Administrator-defined booking detail choices (one line = one choice).
+async function loadBookingOptions(){
+  try{
+    const options=await api("admin/booking-options");
+    for(const [category,id] of [["place","optionsPlace"],["outfit","optionsOutfit"],["food","optionsFood"]]){
+      $(id).value=(options[category]||[]).join("\n");
+    }
+  }catch(e){$("bookingOptionsStatus").textContent=e.message;}
+}
+$("saveBookingOptions").onclick=async()=>{
+  const button=$("saveBookingOptions");button.disabled=true;
+  const split=id=>$(id).value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  try{
+    await api("admin/booking-options",{method:"PUT",body:JSON.stringify({place:split("optionsPlace"),outfit:split("optionsOutfit"),food:split("optionsFood")})});
+    $("bookingOptionsStatus").textContent="Propozycje zapisane. Są już widoczne na stronie rezerwacji.";
+    await loadBookingOptions();
+  }catch(e){$("bookingOptionsStatus").textContent=e.message;}
+  finally{button.disabled=false;}
 };
